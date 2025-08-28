@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class SnakeApp extends JFrame {
 
@@ -20,8 +21,10 @@ public final class SnakeApp extends JFrame {
   private final GamePanel gamePanel;
   private final JButton actionButton;
   private final GameClock clock;
-  private final java.util.List<Snake> snakes = new java.util.ArrayList<>();
-  private final java.util.List<SnakeRunner> snakeRunners = new java.util.ArrayList<>();
+  // CopyOnWriteArrayList: thread-safe, optimizada para lecturas frecuentes (UI updates)
+  // Previene ConcurrentModificationException en accesos UI vs initialization
+  private final java.util.List<Snake> snakes = new CopyOnWriteArrayList<>();
+  private final java.util.List<SnakeRunner> snakeRunners = new CopyOnWriteArrayList<>();
 
   public SnakeApp() {
     super("The Snake Race");
@@ -52,6 +55,7 @@ public final class SnakeApp extends JFrame {
     for (Snake snake : snakes) {
       SnakeRunner runner = new SnakeRunner(snake, board);
       snakeRunners.add(runner);
+      clock.addListener(runner);
       exec.submit(runner);
     }
 
@@ -99,10 +103,10 @@ public final class SnakeApp extends JFrame {
 
     if (snakes.size() > 1) {
       var p2 = snakes.get(1);
-      im.put(KeyStroke.getKeyStroke('A'), "p2-left");
-      im.put(KeyStroke.getKeyStroke('D'), "p2-right");
-      im.put(KeyStroke.getKeyStroke('W'), "p2-up");
-      im.put(KeyStroke.getKeyStroke('S'), "p2-down");
+      im.put(KeyStroke.getKeyStroke("A"), "p2-left");
+      im.put(KeyStroke.getKeyStroke("D"), "p2-right");
+      im.put(KeyStroke.getKeyStroke("W"), "p2-up");
+      im.put(KeyStroke.getKeyStroke("S"), "p2-down");
       am.put("p2-left", new AbstractAction() {
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -131,21 +135,24 @@ public final class SnakeApp extends JFrame {
 
     setVisible(true);
     clock.start();
+    
+    // Asegurar que el panel tenga el foco para recibir teclas
+    SwingUtilities.invokeLater(() -> {
+      gamePanel.requestFocusInWindow();
+    });
   }
 
   private void togglePause() {
     if ("Action".equals(actionButton.getText())) {
       actionButton.setText("Resume");
       clock.pause();
-      for (SnakeRunner runner : snakeRunners) {
-        runner.pause();
-      }
     } else {
       actionButton.setText("Action");
       clock.resume();
-      for (SnakeRunner runner : snakeRunners) {
-        runner.resume();
-      }
+      // Restaurar foco después de resume
+      SwingUtilities.invokeLater(() -> {
+        gamePanel.requestFocusInWindow();
+      });
     }
   }
 
@@ -164,6 +171,7 @@ public final class SnakeApp extends JFrame {
       this.snakesSupplier = snakesSupplier;
       setPreferredSize(new Dimension(board.width() * cell + 1, board.height() * cell + 40));
       setBackground(Color.WHITE);
+      setFocusable(true);
     }
 
     @Override

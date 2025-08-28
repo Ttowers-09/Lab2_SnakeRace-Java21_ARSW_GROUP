@@ -3,20 +3,32 @@ package co.eci.snake.concurrency;
 import co.eci.snake.core.Board;
 import co.eci.snake.core.Direction;
 import co.eci.snake.core.Snake;
+import co.eci.snake.core.engine.GameClock;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-public final class SnakeRunner implements Runnable {
+/**
+ * SnakeRunner - Ejecuta el movimiento de una serpiente de forma concurrente
+ * 
+ * CAMBIOS DE CONCURRENCIA:
+ * - Eliminado Thread.sleep() (espera activa) -> wait/notify (espera eficiente)
+ * - Implementa GameClockListener para coordinacion con GameClock
+ * - Agregados pause/resume/stop thread-safe
+ * - Sistema hibrido: coordinacion por clock + fallback timing
+ */
+public final class SnakeRunner implements Runnable, GameClock.GameClockListener {
   private final Snake snake;
   private final Board board;
   private final int baseSleepMs = 80;
   private final int turboSleepMs = 40;
   private int turboTicks = 0;
-  
+
+  // Sincronizacion para wait/notify en lugar de Thread.sleep()
   private final Object pauseLock = new Object();
   private volatile boolean paused = false;
   private volatile boolean stopped = false;
-  
+  private volatile boolean clockTick = false;
+
   private long lastMoveTime = 0;
 
   public SnakeRunner(Snake snake, Board board) {
@@ -34,24 +46,30 @@ public final class SnakeRunner implements Runnable {
             pauseLock.wait();
           }
         }
-        
-        if (stopped) break;
-        
-        int sleepTime = (turboTicks > 0) ? turboSleepMs : baseSleepMs;
-        long currentTime = System.currentTimeMillis();
-        long timeElapsed = currentTime - lastMoveTime;
-        
+
+        if (stopped)
+          break;
+
         synchronized (pauseLock) {
-          if (timeElapsed < sleepTime && !stopped) {
-            long waitTime = sleepTime - timeElapsed;
-            pauseLock.wait(waitTime);
+          while (!clockTick && !stopped) {
+            int sleepTime = (turboTicks > 0) ? turboSleepMs : baseSleepMs;
+            pauseLock.wait(sleepTime);
+
+            if (!clockTick) {
+              long currentTime = System.currentTimeMillis();
+              if (currentTime - lastMoveTime >= sleepTime) {
+                break;
+              }
+            }
           }
+          clockTick = false; // Reset clock tick
         }
-        
-        if (stopped) break;
-        
+
+        if (stopped)
+          break;
+
         lastMoveTime = System.currentTimeMillis();
-        
+
         maybeTurn();
         var res = board.step(snake);
         if (res == Board.MoveResult.HIT_OBSTACLE) {
@@ -59,7 +77,8 @@ public final class SnakeRunner implements Runnable {
         } else if (res == Board.MoveResult.ATE_TURBO) {
           turboTicks = 100;
         }
-        if (turboTicks > 0) turboTicks--;
+        if (turboTicks > 0)
+          turboTicks--;
       }
     } catch (InterruptedException ie) {
       Thread.currentThread().interrupt();
@@ -68,14 +87,15 @@ public final class SnakeRunner implements Runnable {
 
   private void maybeTurn() {
     double p = (turboTicks > 0) ? 0.05 : 0.10;
-    if (ThreadLocalRandom.current().nextDouble() < p) randomTurn();
+    if (ThreadLocalRandom.current().nextDouble() < p)
+      randomTurn();
   }
 
   private void randomTurn() {
     var dirs = Direction.values();
     snake.turn(dirs[ThreadLocalRandom.current().nextInt(dirs.length)]);
   }
-  
+
   /**
    * Pauses the snake runner using wait/notify mechanism
    */
@@ -84,7 +104,7 @@ public final class SnakeRunner implements Runnable {
       paused = true;
     }
   }
-  
+
   /**
    * Resumes the snake runner using wait/notify mechanism
    */
@@ -94,7 +114,7 @@ public final class SnakeRunner implements Runnable {
       pauseLock.notifyAll();
     }
   }
-  
+
   /**
    * Stops the snake runner
    */
@@ -104,7 +124,7 @@ public final class SnakeRunner implements Runnable {
       pauseLock.notifyAll();
     }
   }
-  
+
   /**
    * Triggers an immediate move by notifying waiting threads
    */
@@ -114,5 +134,28 @@ public final class SnakeRunner implements Runnable {
         pauseLock.notify();
       }
     }
+  }
+
+  @Override
+  public void onTick() {
+    synchronized (pauseLock) {
+      clockTick = true;
+      pauseLock.notify();
+    }
+  }
+
+  @Override
+  public void onPause() {
+    pause();
+  }
+
+  @Override
+  public void onResume() {
+    resume();
+  }
+
+  @Override
+  public void onStop() {
+    stop();
   }
 }
