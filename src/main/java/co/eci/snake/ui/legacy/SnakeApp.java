@@ -21,6 +21,7 @@ public final class SnakeApp extends JFrame {
   private final JButton actionButton;
   private final GameClock clock;
   private final java.util.List<Snake> snakes = new java.util.ArrayList<>();
+  private final java.util.List<SnakeRunner> snakeRunners = new java.util.ArrayList<>();
 
   public SnakeApp() {
     super("The Snake Race");
@@ -48,7 +49,11 @@ public final class SnakeApp extends JFrame {
     this.clock = new GameClock(60, () -> SwingUtilities.invokeLater(gamePanel::repaint));
 
     var exec = Executors.newVirtualThreadPerTaskExecutor();
-    snakes.forEach(s -> exec.submit(new SnakeRunner(s, board)));
+    for (Snake snake : snakes) {
+      SnakeRunner runner = new SnakeRunner(snake, board);
+      snakeRunners.add(runner);
+      exec.submit(runner);
+    }
 
     actionButton.addActionListener((ActionEvent e) -> togglePause());
 
@@ -132,9 +137,15 @@ public final class SnakeApp extends JFrame {
     if ("Action".equals(actionButton.getText())) {
       actionButton.setText("Resume");
       clock.pause();
+      for (SnakeRunner runner : snakeRunners) {
+        runner.pause();
+      }
     } else {
       actionButton.setText("Action");
       clock.resume();
+      for (SnakeRunner runner : snakeRunners) {
+        runner.resume();
+      }
     }
   }
 
@@ -167,7 +178,6 @@ public final class SnakeApp extends JFrame {
       for (int y = 0; y <= board.height(); y++)
         g2.drawLine(0, y * cell, board.width() * cell, y * cell);
 
-      // Obstáculos
       g2.setColor(new Color(255, 102, 0));
       for (var p : board.obstacles()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -179,7 +189,6 @@ public final class SnakeApp extends JFrame {
         g2.setColor(new Color(255, 102, 0));
       }
 
-      // Ratones
       g2.setColor(Color.BLACK);
       for (var p : board.mice()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -189,7 +198,6 @@ public final class SnakeApp extends JFrame {
         g2.setColor(Color.BLACK);
       }
 
-      // Teleports (flechas rojas)
       Map<Position, Position> tp = board.teleports();
       g2.setColor(Color.RED);
       for (var entry : tp.entrySet()) {
@@ -200,7 +208,6 @@ public final class SnakeApp extends JFrame {
         g2.fillPolygon(xs, ys, xs.length);
       }
 
-      // Turbo (rayos)
       g2.setColor(Color.BLACK);
       for (var p : board.turbo()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -208,8 +215,6 @@ public final class SnakeApp extends JFrame {
         int[] ys = { y + 2, y + 2, y + 8, y + 8, y + 16, y + 10 };
         g2.fillPolygon(xs, ys, xs.length);
       }
-
-      // Serpientes
       var snakes = snakesSupplier.get();
       int idx = 0;
       for (Snake s : snakes) {
