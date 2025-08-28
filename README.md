@@ -1,4 +1,29 @@
-# Snake Race — ARSW Lab #2 (Java 21, Virtual Threads)
+# Snake Race — ARSW Lab #2 (Java 21, Virtual Threads)
+
+**Escuela Colombiana de Ingeniería – Arquitecturas de Software**  
+Laboratorio de programación concurrente: condiciones de carrera, sincronización y colecciones seguras.
+
+## MEJORAS DE CONCURRENCIA IMPLEMENTADAS
+
+Ver documentacion detallada en: [`CONCURRENCY_CHANGES.md`](CONCURRENCY_CHANGES.md)
+
+### Problemas Resueltos:
+- **Eliminadas esperas activas** en SnakeRunner (Thread.sleep → wait/notify)
+- **Colecciones thread-safe** en Board (HashSet → ConcurrentHashMap.newKeySet())
+- **Sincronizacion granular** en Board.step() (locks especificos vs synchronized general)
+- **Listas thread-safe** en SnakeApp (ArrayList → CopyOnWriteArrayList)
+- **Coordinacion GameClock-Serpientes** (sistema de listeners)
+
+### Beneficios Obtenidos:
+- **Rendimiento**: Sin esperas activas, locks granulares, paralelismo optimizado
+- **Estabilidad**: Eliminadas ConcurrentModificationException, estados consistentes
+- **Escalabilidad**: Funciona eficientemente con 10+ serpientes simultaneas
+
+---
+
+## Requisitos
+
+- **JDK 21** (Temurin recomendado)ce — ARSW Lab #2 (Java 21, Virtual Threads)
 
 **Escuela Colombiana de Ingeniería – Arquitecturas de Software**  
 Laboratorio de programación concurrente: condiciones de carrera, sincronización y colecciones seguras.

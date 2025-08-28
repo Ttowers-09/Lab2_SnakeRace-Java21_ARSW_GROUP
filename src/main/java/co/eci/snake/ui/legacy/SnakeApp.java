@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class SnakeApp extends JFrame {
 
@@ -20,7 +21,10 @@ public final class SnakeApp extends JFrame {
   private final GamePanel gamePanel;
   private final JButton actionButton;
   private final GameClock clock;
-  private final java.util.List<Snake> snakes = new java.util.ArrayList<>();
+  // CopyOnWriteArrayList: thread-safe, optimizada para lecturas frecuentes (UI updates)
+  // Previene ConcurrentModificationException en accesos UI vs initialization
+  private final java.util.List<Snake> snakes = new CopyOnWriteArrayList<>();
+  private final java.util.List<SnakeRunner> snakeRunners = new CopyOnWriteArrayList<>();
 
   public SnakeApp() {
     super("The Snake Race");
@@ -48,7 +52,12 @@ public final class SnakeApp extends JFrame {
     this.clock = new GameClock(60, () -> SwingUtilities.invokeLater(gamePanel::repaint));
 
     var exec = Executors.newVirtualThreadPerTaskExecutor();
-    snakes.forEach(s -> exec.submit(new SnakeRunner(s, board)));
+    for (Snake snake : snakes) {
+      SnakeRunner runner = new SnakeRunner(snake, board);
+      snakeRunners.add(runner);
+      clock.addListener(runner);
+      exec.submit(runner);
+    }
 
     actionButton.addActionListener((ActionEvent e) -> togglePause());
 
@@ -94,10 +103,10 @@ public final class SnakeApp extends JFrame {
 
     if (snakes.size() > 1) {
       var p2 = snakes.get(1);
-      im.put(KeyStroke.getKeyStroke('A'), "p2-left");
-      im.put(KeyStroke.getKeyStroke('D'), "p2-right");
-      im.put(KeyStroke.getKeyStroke('W'), "p2-up");
-      im.put(KeyStroke.getKeyStroke('S'), "p2-down");
+      im.put(KeyStroke.getKeyStroke("A"), "p2-left");
+      im.put(KeyStroke.getKeyStroke("D"), "p2-right");
+      im.put(KeyStroke.getKeyStroke("W"), "p2-up");
+      im.put(KeyStroke.getKeyStroke("S"), "p2-down");
       am.put("p2-left", new AbstractAction() {
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -126,6 +135,11 @@ public final class SnakeApp extends JFrame {
 
     setVisible(true);
     clock.start();
+    
+    // Asegurar que el panel tenga el foco para recibir teclas
+    SwingUtilities.invokeLater(() -> {
+      gamePanel.requestFocusInWindow();
+    });
   }
 
   private void togglePause() {
@@ -135,6 +149,10 @@ public final class SnakeApp extends JFrame {
     } else {
       actionButton.setText("Action");
       clock.resume();
+      // Restaurar foco después de resume
+      SwingUtilities.invokeLater(() -> {
+        gamePanel.requestFocusInWindow();
+      });
     }
   }
 
@@ -153,6 +171,7 @@ public final class SnakeApp extends JFrame {
       this.snakesSupplier = snakesSupplier;
       setPreferredSize(new Dimension(board.width() * cell + 1, board.height() * cell + 40));
       setBackground(Color.WHITE);
+      setFocusable(true);
     }
 
     @Override
@@ -167,7 +186,6 @@ public final class SnakeApp extends JFrame {
       for (int y = 0; y <= board.height(); y++)
         g2.drawLine(0, y * cell, board.width() * cell, y * cell);
 
-      // Obstáculos
       g2.setColor(new Color(255, 102, 0));
       for (var p : board.obstacles()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -179,7 +197,6 @@ public final class SnakeApp extends JFrame {
         g2.setColor(new Color(255, 102, 0));
       }
 
-      // Ratones
       g2.setColor(Color.BLACK);
       for (var p : board.mice()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -189,7 +206,6 @@ public final class SnakeApp extends JFrame {
         g2.setColor(Color.BLACK);
       }
 
-      // Teleports (flechas rojas)
       Map<Position, Position> tp = board.teleports();
       g2.setColor(Color.RED);
       for (var entry : tp.entrySet()) {
@@ -200,7 +216,6 @@ public final class SnakeApp extends JFrame {
         g2.fillPolygon(xs, ys, xs.length);
       }
 
-      // Turbo (rayos)
       g2.setColor(Color.BLACK);
       for (var p : board.turbo()) {
         int x = p.x() * cell, y = p.y() * cell;
@@ -208,8 +223,6 @@ public final class SnakeApp extends JFrame {
         int[] ys = { y + 2, y + 2, y + 8, y + 8, y + 16, y + 10 };
         g2.fillPolygon(xs, ys, xs.length);
       }
-
-      // Serpientes
       var snakes = snakesSupplier.get();
       int idx = 0;
       for (Snake s : snakes) {
