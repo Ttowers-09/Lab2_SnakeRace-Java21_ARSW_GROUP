@@ -60,7 +60,7 @@ public final class SnakeApp extends JFrame {
     () -> paused.get(),
     () -> pauseStats
   );
-    this.actionButton = new JButton("Pause");
+    this.actionButton = new JButton("Action");
 
     setLayout(new BorderLayout());
     add(gamePanel, BorderLayout.CENTER);
@@ -180,7 +180,7 @@ public final class SnakeApp extends JFrame {
             pauseStats = "No hay serpientes";
         }
     } else {
-        actionButton.setText("Pause");
+        actionButton.setText("Action");
         clock.resume();
         paused.set(false);
         pauseStats = "";
