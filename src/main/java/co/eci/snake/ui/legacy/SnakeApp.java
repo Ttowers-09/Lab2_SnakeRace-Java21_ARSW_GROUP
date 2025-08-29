@@ -1,20 +1,35 @@
 package co.eci.snake.ui.legacy;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.event.ActionEvent;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.swing.AbstractAction;
+import javax.swing.ActionMap;
+import javax.swing.InputMap;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
+
 import co.eci.snake.concurrency.SnakeRunner;
 import co.eci.snake.core.Board;
 import co.eci.snake.core.Direction;
 import co.eci.snake.core.Position;
 import co.eci.snake.core.Snake;
 import co.eci.snake.core.engine.GameClock;
-
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.CopyOnWriteArrayList;
-
 public final class SnakeApp extends JFrame {
 
   private final Board board;
@@ -25,6 +40,9 @@ public final class SnakeApp extends JFrame {
   // Previene ConcurrentModificationException en accesos UI vs initialization
   private final java.util.List<Snake> snakes = new CopyOnWriteArrayList<>();
   private final java.util.List<SnakeRunner> snakeRunners = new CopyOnWriteArrayList<>();
+
+  private final AtomicBoolean paused = new AtomicBoolean(false);
+  private volatile String pauseStats = "";
 
   public SnakeApp() {
     super("The Snake Race");
@@ -37,9 +55,12 @@ public final class SnakeApp extends JFrame {
       var dir = Direction.values()[i % Direction.values().length];
       snakes.add(Snake.of(x, y, dir));
     }
-
-    this.gamePanel = new GamePanel(board, () -> snakes);
-    this.actionButton = new JButton("Action");
+    this.gamePanel = new GamePanel(board,
+    () -> snakes,
+    () -> paused.get(),
+    () -> pauseStats
+  );
+    this.actionButton = new JButton("Pause");
 
     setLayout(new BorderLayout());
     add(gamePanel, BorderLayout.CENTER);
@@ -144,41 +165,61 @@ public final class SnakeApp extends JFrame {
 
   private void togglePause() {
     if ("Action".equals(actionButton.getText())) {
-      actionButton.setText("Resume");
-      clock.pause();
+        actionButton.setText("Resume");
+        clock.pause();
+        paused.set(true);
+
+        // Calcular estadística en pausa
+        Snake longest = snakes.stream()
+                .max(Comparator.comparingInt(Snake::length))
+                .orElse(null);
+        if (longest != null) {
+            pauseStats = "Serpiente más larga: #" + longest.id() +
+                         " con " + longest.length() + " segmentos";
+        } else {
+            pauseStats = "No hay serpientes";
+        }
     } else {
-      actionButton.setText("Action");
-      clock.resume();
-      // Restaurar foco después de resume
-      SwingUtilities.invokeLater(() -> {
-        gamePanel.requestFocusInWindow();
-      });
+        actionButton.setText("Pause");
+        clock.resume();
+        paused.set(false);
+        pauseStats = "";
     }
-  }
+        gamePanel.repaint();
+
+    SwingUtilities.invokeLater(() -> gamePanel.requestFocusInWindow());
+}
+
 
   public static final class GamePanel extends JPanel {
-    private final Board board;
-    private final Supplier snakesSupplier;
-    private final int cell = 20;
+  private final Board board;
+  private final Supplier snakesSupplier;
+  private final java.util.function.Supplier<Boolean> pausedSupplier;
+  private final java.util.function.Supplier<String> statsSupplier;
+  private final int cell = 20;
 
-    @FunctionalInterface
-    public interface Supplier {
-      List<Snake> get();
-    }
+  @FunctionalInterface
+  public interface Supplier {
+    List<Snake> get();
+  }
 
-    public GamePanel(Board board, Supplier snakesSupplier) {
-      this.board = board;
-      this.snakesSupplier = snakesSupplier;
-      setPreferredSize(new Dimension(board.width() * cell + 1, board.height() * cell + 40));
-      setBackground(Color.WHITE);
-      setFocusable(true);
-    }
+    public GamePanel(Board board, Supplier snakesSupplier,
+                   java.util.function.Supplier<Boolean> pausedSupplier,
+                   java.util.function.Supplier<String> statsSupplier) {
+    this.board = board;
+    this.snakesSupplier = snakesSupplier;
+    this.pausedSupplier = pausedSupplier;
+    this.statsSupplier = statsSupplier;
+    setPreferredSize(new Dimension(board.width() * cell + 1, board.height() * cell + 40));
+    setBackground(Color.WHITE);
+    setFocusable(true);
+  }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-      super.paintComponent(g);
-      var g2 = (Graphics2D) g.create();
-      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+  @Override
+  protected void paintComponent(Graphics g) {
+    super.paintComponent(g);
+    var g2 = (Graphics2D) g.create();
+    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
       g2.setColor(new Color(220, 220, 220));
       for (int x = 0; x <= board.width(); x++)
@@ -239,6 +280,43 @@ public final class SnakeApp extends JFrame {
         }
         idx++;
       }
+      if (pausedSupplier.get()) {
+    var snakesList = snakesSupplier.get();
+
+    var ranking = snakesList.stream()
+        .sorted(Comparator.comparingInt(Snake::length).reversed())
+        .toList();
+
+    g2.setColor(new Color(0, 0, 0, 150));
+    g2.fillRoundRect(getWidth()/2 - 150, getHeight()/2 - 80, 300, 150, 20, 20);
+
+    g2.setColor(Color.WHITE);
+    g2.drawString("PAUSA", getWidth()/2 - 20, getHeight()/2 - 40);
+
+    int y = getHeight()/2;
+
+    if (ranking.size() == 1) {
+        var s = ranking.get(0);
+        int idxSnake = snakesList.indexOf(s);
+        String nombre = (idxSnake == 0) ? "Jugador Verde" : "Jugador Azul";
+        g2.drawString(nombre + " - Longitud: " + s.length(), getWidth()/2 - 60, y);
+
+    } else {
+        var mejor = ranking.get(0);
+        int idxMejor = snakesList.indexOf(mejor);
+        String nombreMejor = (idxMejor == 0) ? "Jugador Verde" : "Jugador Azul";
+        g2.drawString("Mejor: " + nombreMejor + " (" + mejor.length() + ")", getWidth()/2 - 80, y);
+
+        y += 20;
+
+        var peor = ranking.get(ranking.size()-1);
+        int idxPeor = snakesList.indexOf(peor);
+        String nombrePeor = (idxPeor == 0) ? "Jugador Verde" : "Jugador Azul";
+        g2.drawString("Peor: " + nombrePeor + " (" + peor.length() + ")", getWidth()/2 - 80, y);
+    }
+}
+
+
       g2.dispose();
     }
   }

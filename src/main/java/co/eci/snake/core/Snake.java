@@ -7,7 +7,7 @@ public final class Snake {
   private final Deque<Position> body = new ArrayDeque<>();
   private volatile Direction direction;
   private int maxLength = 5;
-
+  
   private Snake(Position start, Direction dir) {
     body.addFirst(start);
     this.direction = dir;
@@ -38,4 +38,12 @@ public final class Snake {
     if (grow) maxLength++;
     while (body.size() > maxLength) body.removeLast();
   }
+  public int length() {
+    return body.size();
+  }
+  public int id() {
+    return System.identityHashCode(this);
+  }
+
+
 }
