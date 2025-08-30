@@ -146,10 +146,10 @@ public final class SnakeApp extends JFrame {
 
     if (snakes.size() > 1) {
       var p2 = snakes.get(1);
-      im.put(KeyStroke.getKeyStroke("A"), "p2-left");
-      im.put(KeyStroke.getKeyStroke("D"), "p2-right");
-      im.put(KeyStroke.getKeyStroke("W"), "p2-up");
-      im.put(KeyStroke.getKeyStroke("S"), "p2-down");
+      im.put(KeyStroke.getKeyStroke("pressed A"), "p2-left");
+      im.put(KeyStroke.getKeyStroke("pressed D"), "p2-right");
+      im.put(KeyStroke.getKeyStroke("pressed W"), "p2-up");
+      im.put(KeyStroke.getKeyStroke("pressed S"), "p2-down");
       am.put("p2-left", new AbstractAction() {
         @Override
         public void actionPerformed(ActionEvent e) {
